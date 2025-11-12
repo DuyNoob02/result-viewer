@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-
-
 export default function ViewResultPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/result") // API trả JSON: thông tin bệnh nhân + mảng pdfUrl
+    fetch("/api/result")
       .then(async (res) => {
         if (!res.ok) throw new Error("Không thể tải kết quả");
         return res.json();
@@ -24,6 +22,13 @@ export default function ViewResultPage() {
         setLoading(false);
       });
   }, []);
+
+  const handleDownload = (pdfUrl: string, name: string) => {
+    const link = document.createElement("a");
+    link.href = pdfUrl;
+    link.download = `${name.replace(/\s+/g, "_")}.pdf`;
+    link.click();
+  };
 
   if (loading)
     return (
@@ -83,16 +88,29 @@ export default function ViewResultPage() {
         <div className="space-y-8">
           {data.results.map((r: any, idx: number) => (
             <div key={idx}>
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">
+              <h2 className="text-lg font-semibold text-gray-700 mb-3">
                 {idx + 1}. {r.name}
               </h2>
               {r.pdfUrl ? (
-                <iframe
-                  src={r.pdfUrl}
-                  width="100%"
-                  height="600px"
-                  className="border rounded-lg"
-                />
+                <>
+                  {/* Iframe đơn giản - file trong public folder */}
+                  <iframe
+                    src={r.pdfUrl}
+                    width="100%"
+                    height="500px"
+                    className="border rounded-lg mb-4"
+                    title={`PDF viewer for ${r.name}`}
+                  />
+
+                  <div className="text-center">
+                    <button
+                      onClick={() => handleDownload(r.pdfUrl, r.name)}
+                      className="px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition"
+                    >
+                      Tải kết quả
+                    </button>
+                  </div>
+                </>
               ) : (
                 <p className="text-gray-500 text-center">
                   Không thể hiển thị PDF

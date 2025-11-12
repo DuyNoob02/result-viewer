@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 // Base64 PDF mẫu (rút gọn)
-const samplePDF = 'https://amethyst-helli-61.tiiny.site'
+const samplePDF = '/pdfs/kq.pdf';
 
 export async function GET() {
   const fakeData = {
