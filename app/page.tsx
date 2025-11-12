@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+
+
 export default function ViewResultPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
