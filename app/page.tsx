@@ -93,43 +93,17 @@ export default function ViewResultPage() {
               </h2>
               {r.pdfUrl ? (
                 <>
-                  {/* Sử dụng object tag với fallback cho mobile */}
-                  <div className="border rounded-lg mb-4 overflow-hidden bg-gray-50">
-                    {/* Desktop: iframe */}
-                    <iframe
-                      src={r.pdfUrl}
-                      width="100%"
-                      height="500px"
-                      className="hidden md:block border-0"
-                      title={`PDF viewer for ${r.name}`}
-                    />
-                    
-                    {/* Mobile: Embed với fallback */}
-                    <div className="md:hidden">
-                      <object
-                        data={r.pdfUrl}
-                        type="application/pdf"
-                        width="100%"
-                        height="500px"
-                        className="border-0"
-                      >
-                        {/* Fallback nếu không hiển thị được */}
-                        <div className="p-4 text-center space-y-4">
-                          <p className="text-gray-600">
-                            Trình duyệt của bạn không hỗ trợ xem PDF trực tiếp
-                          </p>
-                          <a
-                            href={r.pdfUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block px-5 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 active:scale-95 transition"
-                          >
-                            Mở PDF trong tab mới
-                          </a>
-                        </div>
-                      </object>
-                    </div>
-                  </div>
+                  {/* Iframe đơn giản - file trong public folder */}
+                  <iframe
+                    src={`https://docs.google.com/gview?url=${encodeURIComponent(
+                      `${window.location.origin}${r.pdfUrl}`
+                    )}&embedded=true`}
+                    width="100%"
+                    height="600px"
+                    className="border rounded-lg mb-4"
+                    title={`PDF viewer for ${r.name}`}
+                    allowFullScreen
+                  />
 
                   <div className="text-center">
                     <button
