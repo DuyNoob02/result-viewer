@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 type ResultItem = {
   name: string;
-  content: string; // base64 string
-  type: "pdf" | "image"; // loại file
+  content: string;
+  type: "pdf" | "image";
 };
 
 type ResultData = {
@@ -22,6 +22,7 @@ export default function ViewResultPage() {
   const [data, setData] = useState<ResultData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
 
   useEffect(() => {
     fetch("/api/result")
@@ -39,11 +40,83 @@ export default function ViewResultPage() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!data) return;
+
+    // Load PDF.js từ CDN
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script.async = true;
+    script.onload = () => {
+      renderAllPDFs();
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, [data]);
+
+  const renderAllPDFs = async () => {
+    if (!data) return;
+    
+    // @ts-ignore
+    const pdfjsLib = window.pdfjsLib;
+    if (!pdfjsLib) return;
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    for (let idx = 0; idx < data.results.length; idx++) {
+      const result = data.results[idx];
+      if (result.type !== "pdf") continue;
+
+      const canvas = canvasRefs.current[idx];
+      if (!canvas) continue;
+
+      try {
+        const pdfData = atob(result.content);
+        const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+        const pdf = await loadingTask.promise;
+        
+        // Render all pages
+        const container = canvas.parentElement;
+        if (!container) continue;
+        
+        container.innerHTML = ""; // Clear loading
+        
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+          
+          const pageCanvas = document.createElement("canvas");
+          const context = pageCanvas.getContext("2d");
+          if (!context) continue;
+          
+          pageCanvas.width = viewport.width;
+          pageCanvas.height = viewport.height;
+          pageCanvas.className = "w-full border-b border-gray-200 last:border-b-0";
+          
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+          }).promise;
+          
+          container.appendChild(pageCanvas);
+        }
+      } catch (err) {
+        console.error("Error rendering PDF:", err);
+        if (canvas.parentElement) {
+          canvas.parentElement.innerHTML = 
+            '<p class="text-red-500 text-center py-8">Không thể hiển thị PDF</p>';
+        }
+      }
+    }
+  };
+
   const handleDownload = (base64Content: string, name: string, type: string) => {
-    // Xác định MIME type
     const mimeType = type === "pdf" ? "application/pdf" : "image/jpeg";
     
-    // Chuyển base64 thành blob
     const byteCharacters = atob(base64Content);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -52,7 +125,6 @@ export default function ViewResultPage() {
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], { type: mimeType });
     
-    // Tạo URL và download
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -128,16 +200,20 @@ export default function ViewResultPage() {
               {r.content ? (
                 <>
                   {r.type === "pdf" ? (
-                    // Hiển thị PDF trực tiếp
                     <div className="w-full border rounded-lg overflow-hidden bg-gray-50">
-                      <iframe
-                        src={`data:application/pdf;base64,${r.content}`}
-                        className="w-full h-[500px] md:h-[700px]"
-                        title={`PDF viewer for ${r.name}`}
-                      />
+                      <div 
+                        ref={(el) => {
+                          if (el) canvasRefs.current[idx] = el as any;
+                        }}
+                        className="flex flex-col items-center"
+                      >
+                        <canvas ref={(el) => {
+                          if (el) canvasRefs.current[idx] = el;
+                        }} className="hidden" />
+                        <p className="text-gray-500 py-8">Đang tải PDF...</p>
+                      </div>
                     </div>
                   ) : (
-                    // Hiển thị hình ảnh trực tiếp
                     <div className="w-full border rounded-lg overflow-hidden bg-gray-50 flex justify-center">
                       <img
                         src={`data:image/jpeg;base64,${r.content}`}
