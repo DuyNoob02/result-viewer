@@ -22,7 +22,9 @@ export default function ViewResultPage() {
   const [data, setData] = useState<ResultData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const canvasRefs = useRef<{ [key: number]: HTMLCanvasElement | null }>({});
+  const [pdfScales, setPdfScales] = useState<{ [key: number]: number }>({});
+  const canvasRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const pdfDocsRef = useRef<{ [key: number]: any }>({});
 
   useEffect(() => {
     fetch("/api/result")
@@ -53,70 +55,129 @@ export default function ViewResultPage() {
     document.body.appendChild(script);
 
     return () => {
-      document.body.removeChild(script);
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
     };
   }, [data]);
 
+  const renderPDF = async (pdfDoc: any, idx: number, scale: number) => {
+    const container = canvasRefs.current[idx];
+    if (!container) return;
+
+    try {
+      container.innerHTML = "";
+
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale });
+
+        const pageCanvas = document.createElement("canvas");
+        const context = pageCanvas.getContext("2d");
+        if (!context) continue;
+
+        // High-DPI rendering để tránh mờ
+        const outputScale = window.devicePixelRatio || 1;
+        pageCanvas.width = Math.floor(viewport.width * outputScale);
+        pageCanvas.height = Math.floor(viewport.height * outputScale);
+        pageCanvas.style.width = Math.floor(viewport.width) + "px";
+        pageCanvas.style.height = Math.floor(viewport.height) + "px";
+        pageCanvas.className = "border-b border-gray-200 last:border-b-0 mx-auto";
+
+        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+        await page.render({
+          canvasContext: context,
+          viewport: viewport,
+          transform: transform,
+        }).promise;
+
+        container.appendChild(pageCanvas);
+      }
+    } catch (err) {
+      console.error("Error rendering PDF:", err);
+      container.innerHTML =
+        '<p class="text-red-500 text-center py-8">Không thể hiển thị PDF</p>';
+    }
+  };
+
   const renderAllPDFs = async () => {
     if (!data) return;
-    
+
     // @ts-ignore
     const pdfjsLib = window.pdfjsLib;
     if (!pdfjsLib) return;
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const initialScales: { [key: number]: number } = {};
 
     for (let idx = 0; idx < data.results.length; idx++) {
       const result = data.results[idx];
       if (result.type !== "pdf") continue;
 
-      const canvas = canvasRefs.current[idx];
-      if (!canvas) continue;
-
       try {
         const pdfData = atob(result.content);
         const loadingTask = pdfjsLib.getDocument({ data: pdfData });
         const pdf = await loadingTask.promise;
-        
-        // Render all pages
-        const container = canvas.parentElement;
-        if (!container) continue;
-        
-        container.innerHTML = ""; // Clear loading
-        
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 1.5 });
-          
-          const pageCanvas = document.createElement("canvas");
-          const context = pageCanvas.getContext("2d");
-          if (!context) continue;
-          
-          pageCanvas.width = viewport.width;
-          pageCanvas.height = viewport.height;
-          pageCanvas.className = "w-full border-b border-gray-200 last:border-b-0";
-          
-          await page.render({
-            canvasContext: context,
-            viewport: viewport,
-          }).promise;
-          
-          container.appendChild(pageCanvas);
-        }
+
+        pdfDocsRef.current[idx] = pdf;
+        initialScales[idx] = 1.5;
+
+        await renderPDF(pdf, idx, 1.5);
       } catch (err) {
-        console.error("Error rendering PDF:", err);
-        if (canvas.parentElement) {
-          canvas.parentElement.innerHTML = 
+        console.error("Error loading PDF:", err);
+        const container = canvasRefs.current[idx];
+        if (container) {
+          container.innerHTML =
             '<p class="text-red-500 text-center py-8">Không thể hiển thị PDF</p>';
         }
       }
+    }
+
+    setPdfScales(initialScales);
+  };
+
+  const handleZoom = async (idx: number, direction: "in" | "out") => {
+    const currentScale = pdfScales[idx] || 1.5;
+    const newScale =
+      direction === "in"
+        ? Math.min(currentScale + 0.3, 3)
+        : Math.max(currentScale - 0.3, 0.5);
+
+    setPdfScales((prev) => ({ ...prev, [idx]: newScale }));
+
+    const pdfDoc = pdfDocsRef.current[idx];
+    if (pdfDoc) {
+      await renderPDF(pdfDoc, idx, newScale);
+    }
+  };
+
+  const handlePrint = (base64Content: string) => {
+    const byteCharacters = atob(base64Content);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+
+    const printWindow = window.open(url, "_blank");
+    if (printWindow) {
+      printWindow.onload = () => {
+        printWindow.print();
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+        }, 1000);
+      };
     }
   };
 
   const handleDownload = (base64Content: string, name: string, type: string) => {
     const mimeType = type === "pdf" ? "application/pdf" : "image/jpeg";
-    
+
     const byteCharacters = atob(base64Content);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -124,7 +185,7 @@ export default function ViewResultPage() {
     }
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], { type: mimeType });
-    
+
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -196,21 +257,70 @@ export default function ViewResultPage() {
               <h2 className="text-lg font-semibold text-gray-700 mb-3">
                 {idx + 1}. {r.name}
               </h2>
-              
+
               {r.content ? (
                 <>
                   {r.type === "pdf" ? (
-                    <div className="w-full border rounded-lg overflow-hidden bg-gray-50">
-                      <div 
-                        ref={(el) => {
-                          if (el) canvasRefs.current[idx] = el as any;
-                        }}
-                        className="flex flex-col items-center"
-                      >
-                        <canvas ref={(el) => {
-                          if (el) canvasRefs.current[idx] = el;
-                        }} className="hidden" />
-                        <p className="text-gray-500 py-8">Đang tải PDF...</p>
+                    <div className="w-full rounded-lg overflow-hidden">
+                      {/* Control Bar */}
+                      <div className="bg-gray-800 text-white px-4 py-3 flex items-center justify-between">
+                        <span className="text-sm">
+                          Zoom: {Math.round((pdfScales[idx] || 1.5) * 100)}%
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleZoom(idx, "out")}
+                            disabled={(pdfScales[idx] || 1.5) <= 0.5}
+                            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-900 disabled:text-gray-600 rounded transition text-sm font-medium"
+                            title="Thu nhỏ"
+                          >
+                            −
+                          </button>
+
+                          <button
+                            onClick={() => handleZoom(idx, "in")}
+                            disabled={(pdfScales[idx] || 1.5) >= 3}
+                            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-900 disabled:text-gray-600 rounded transition text-sm font-medium"
+                            title="Phóng to"
+                          >
+                            +
+                          </button>
+
+                          <button
+                            onClick={() => handlePrint(r.content)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded transition text-sm font-medium flex items-center gap-1.5"
+                            title="In"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                              />
+                            </svg>
+                            In
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* PDF Content */}
+                      <div className="border border-t-0 bg-gray-50">
+                        <div
+                          ref={(el) => {
+                            if (el) canvasRefs.current[idx] = el;
+                          }}
+                          className="flex flex-col items-center overflow-auto max-h-[600px] md:max-h-[800px]"
+                        >
+                          <p className="text-gray-500 py-8">Đang tải PDF...</p>
+                        </div>
                       </div>
                     </div>
                   ) : (
