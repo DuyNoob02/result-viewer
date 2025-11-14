@@ -123,9 +123,9 @@ export default function ViewResultPage() {
         const pdf = await loadingTask.promise;
 
         pdfDocsRef.current[idx] = pdf;
-        initialScales[idx] = 1.5;
+        initialScales[idx] = 1;
 
-        await renderPDF(pdf, idx, 1.5);
+        await renderPDF(pdf, idx, initialScales[idx]);
       } catch (err) {
         console.error("Error loading PDF:", err);
         const container = canvasRefs.current[idx];
@@ -140,11 +140,11 @@ export default function ViewResultPage() {
   };
 
   const handleZoom = async (idx: number, direction: "in" | "out") => {
-    const currentScale = pdfScales[idx] || 1.5;
+    const currentScale = pdfScales[idx] || 1;
     const newScale =
       direction === "in"
-        ? Math.min(currentScale + 0.3, 3)
-        : Math.max(currentScale - 0.3, 0.5);
+        ? Math.min(currentScale + 0.2, 2)
+        : Math.max(currentScale - 0.2, 0.5);
 
     setPdfScales((prev) => ({ ...prev, [idx]: newScale }));
 
@@ -222,7 +222,7 @@ export default function ViewResultPage() {
             width={130}
             height={130}
           />
-          <h1 className="text-blue-600 text-xl md:text-2xl font-bold">
+          <h1 className="text-primary-title text-xl md:text-2xl font-bold">
             KẾT QUẢ CẬN LÂM SÀNG
           </h1>
         </div>
