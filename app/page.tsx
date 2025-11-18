@@ -113,6 +113,9 @@ export default function ViewResultPage() {
 
     const initialScales: { [key: number]: number } = {};
 
+    const isMobile = window.innerWidth <= 768;
+    const defaultScale = isMobile ? 0.5 : 1;
+
     for (let idx = 0; idx < data.results.length; idx++) {
       const result = data.results[idx];
       if (result.type !== "pdf") continue;
@@ -123,7 +126,7 @@ export default function ViewResultPage() {
         const pdf = await loadingTask.promise;
 
         pdfDocsRef.current[idx] = pdf;
-        initialScales[idx] = 1;
+        initialScales[idx] = defaultScale;
 
         await renderPDF(pdf, idx, initialScales[idx]);
       } catch (err) {
@@ -143,8 +146,8 @@ export default function ViewResultPage() {
     const currentScale = pdfScales[idx] || 1;
     const newScale =
       direction === "in"
-        ? Math.min(currentScale + 0.2, 2)
-        : Math.max(currentScale - 0.2, 0.5);
+        ? Math.min(currentScale + 0.05, 2)
+        : Math.max(currentScale - 0.05, 0.5);
 
     setPdfScales((prev) => ({ ...prev, [idx]: newScale }));
 
